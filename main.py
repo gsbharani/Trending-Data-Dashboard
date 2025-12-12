@@ -24,7 +24,7 @@ client = MongoClient(MONGO_URI)
 db = client["video_dashboard"]
 manual_collection = db["manual_data"]
 
-app = FastAPI(title="Multi-Source Video Dashboard")
+app = FastAPI(title="Multi-Source Trending Data Dashboard")
 
 app.add_middleware(
     CORSMiddleware,
@@ -169,3 +169,4 @@ def combined_videos(query: str, start: str, end: str, max_results: int = 50, sou
 @app.get("/", include_in_schema=False)
 def root():
     return FileResponse("static/index.html")
+
