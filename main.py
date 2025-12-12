@@ -138,30 +138,44 @@ def search_videos(query: str, start: str, end: str, max_results: int = 50):
 # ---------------------------
 @app.get("/combined-videos")
 def combined_videos(query: str, start: str, end: str, max_results: int = 50, source: str = "all"):
-    yt_videos = []
-    if source in ["all", "youtube"]:
-        yt_videos = search_videos(query, start, end, max_results)["videos"]
+    try:
+        yt_videos = []
+        if source in ["all", "youtube"]:
+            result = search_videos(query, start, end, max_results)
+            if "videos" not in result:
+                return JSONResponse({"videos": [], "total": 0, "error": "YouTube fetch failed"}, status_code=500)
+            yt_videos = result["videos"]
 
-    # Manual videos from Mongo
-    manual_videos = list(manual_collection.find({}))
-    query_lower = query.lower()
-    filtered_manual = []
+        # Manual videos from Mongo
+        manual_videos = list(manual_collection.find({}))
+        query_lower = query.lower()
+        filtered_manual = []
 
-    for v in manual_videos:
-        pub_date = str(v.get("published", ""))
-        if not (start <= pub_date <= end):
-            continue
-        keywords = str(v.get("keywords", "")).lower().split(",")
-        if any(query_lower in k.strip() for k in keywords):
-            filtered_manual.append(v)
-        # Fill channel if empty
-        if not v.get("channel"):
-            v["channel"] = v.get("id", "")
+        for v in manual_videos:
+            pub_date = str(v.get("published", ""))
+            if not (start <= pub_date <= end):
+                continue
 
-    combined = yt_videos + filtered_manual
-    combined.sort(key=lambda x: x.get("published", ""), reverse=False)
+            keywords = str(v.get("keywords", "")).lower().split(",")
+            if any(query_lower in k.strip() for k in keywords):
+                filtered_manual.append(v)
 
-    return JSONResponse(content={"videos": combined, "total": len(combined)}, media_type="application/json; charset=utf-8")
+            if not v.get("channel"):
+                v["channel"] = v.get("id", "")
+
+        combined = yt_videos + filtered_manual
+        combined.sort(key=lambda x: x.get("published", ""))
+
+        return JSONResponse(
+            content={"videos": combined, "total": len(combined)},
+            media_type="application/json; charset=utf-8"
+        )
+
+    except Exception as e:
+        return JSONResponse(
+            content={"error": str(e), "videos": [], "total": 0},
+            status_code=500
+        )
 
 # ---------------------------
 # Serve frontend
@@ -169,4 +183,5 @@ def combined_videos(query: str, start: str, end: str, max_results: int = 50, sou
 @app.get("/", include_in_schema=False)
 def root():
     return FileResponse("static/index.html")
+
 
