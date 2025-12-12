@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Video Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50 p-6">
+<h1 class="text-3xl font-bold mb-4">Multi-Source Video Dashboard</h1>
+
+<div class="mb-4 flex gap-2">
+  <input id="query" placeholder="Keyword" class="border p-2 rounded">
+  <input id="start" type="date" class="border p-2 rounded">
+  <input id="end" type="date" class="border p-2 rounded">
+  <select id="sourceFilter" class="border p-2 rounded">
+    <option value="all">All Sources</option>
+    <option value="youtube">YouTube</option>
+    <option value="manual">Manual</option>
+  </select>
+  <button id="searchBtn" class="bg-blue-600 text-white p-2 rounded">Search</button>
+  <button id="exportBtn" class="bg-green-600 text-white p-2 rounded">Export CSV</button>
+</div>
+
+<div id="loading" class="hidden text-blue-600">Loading...</div>
+
+<div id="results" class="hidden">
+  <p>Total Videos: <span id="count">0</span></p>
+  <table class="min-w-full border" id="videoTable">
+    <thead>
+      <tr class="bg-gray-200">
+        <th class="border px-2 py-1">Title</th>
+        <th class="border px-2 py-1">Channel</th>
+        <th class="border px-2 py-1">Published</th>
+        <th class="border px-2 py-1">Platform</th>
+        <th class="border px-2 py-1">Views</th>
+        <th class="border px-2 py-1">Likes</th>
+        <th class="border px-2 py-1">Comments</th>
+        <th class="border px-2 py-1">Link</th>
+      </tr>
+    </thead>
+    <tbody id="tableBody"></tbody>
+  </table>
+</div>
+
+<canvas id="viewsChart" class="mt-4"></canvas>
+<canvas id="likesChart" class="mt-4"></canvas>
+<canvas id="commentsChart" class="mt-4"></canvas>
+
+<script>
+const searchBtn = document.getElementById('searchBtn');
+const loading = document.getElementById('loading');
+const results = document.getElementById('results');
+const tableBody = document.getElementById('tableBody');
+const countSpan = document.getElementById('count');
+
+let chartViews, chartLikes, chartComments;
+
+searchBtn.addEventListener('click', async () => {
+  const query = document.getElementById('query').value.trim();
+  const start = document.getElementById('start').value;
+  const end = document.getElementById('end').value;
+  const source = document.getElementById('sourceFilter').value;
+
+  if(!query || !start || !end){ alert("Fill keyword/date"); return; }
+
+  loading.classList.remove('hidden');
+  results.classList.add('hidden');
+  tableBody.innerHTML = '';
+
+  try {
+    const res = await fetch(`/combined-videos?query=${encodeURIComponent(query)}&start=${start}&end=${end}&source=${source}`);
+    const data = await res.json();
+    if (!data || !data.videos || !Array.isArray(data.videos)) { alert("Invalid server response"); return; }
+
+    const videos = data.videos;
+    if(videos.length === 0){ alert("No videos found"); return; }
+
+    countSpan.textContent = videos.length;
+    renderTable(videos);
+    renderCharts(videos);
+    results.classList.remove('hidden');
+
+    document.getElementById('exportBtn').onclick = () => exportCSV(videos);
+
+  } catch(err){ alert(err); }
+  finally{ loading.classList.add('hidden'); }
+});
+
+function renderTable(videos){
+  tableBody.innerHTML = videos.map(v => `
+    <tr>
+      <td class="border px-2 py-1">${v.title}</td>
+      <td class="border px-2 py-1">${v.channel}</td>
+      <td class="border px-2 py-1">${v.published}</td>
+      <td class="border px-2 py-1">${v.platform}</td>
+      <td class="border px-2 py-1 text-center">${v.views}</td>
+      <td class="border px-2 py-1 text-center">${v.likes}</td>
+      <td class="border px-2 py-1 text-center">${v.comments}</td>
+      <td class="border px-2 py-1"><a href="${v.url}" target="_blank">Open</a></td>
+    </tr>
+  `).join('');
+}
+
+function renderCharts(videos){
+  const sorted = [...videos].sort((a,b)=>a.published.localeCompare(b.published));
+  const labels = sorted.map(v=>v.published);
+  const views = sorted.map(v=>v.views);
+  const likes = sorted.map(v=>v.likes);
+  const comments = sorted.map(v=>v.comments);
+
+  if(chartViews) chartViews.destroy();
+  if(chartLikes) chartLikes.destroy();
+  if(chartComments) chartComments.destroy();
+
+  chartViews = new Chart(document.getElementById('viewsChart'), { type:'line', data:{labels,datasets:[{label:'Views',data:views}]} });
+  chartLikes = new Chart(document.getElementById('likesChart'), { type:'line', data:{labels,datasets:[{label:'Likes',data:likes}]} });
+  chartComments = new Chart(document.getElementById('commentsChart'), { type:'bar', data:{labels,datasets:[{label:'Comments',data:comments}]} });
+}
+
+function exportCSV(videos){
+  if(!videos.length){ alert("No data"); return; }
+  let csv = "Title,Channel,Published,Platform,Views,Likes,Comments,Link\n";
+  videos.forEach(v => csv += `"${v.title.replace(/"/g,'""')}","${v.channel}","${v.published}","${v.platform}",${v.views},${v.likes},${v.comments},"${v.url}"\n`);
+  const blob = new Blob([`\uFEFF${csv}`],{type:"text/csv"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a"); a.href = url;
+  a.download = `videos_${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+</script>
+</body>
+</html>
