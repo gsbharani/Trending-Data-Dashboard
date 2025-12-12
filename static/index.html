@@ -71,7 +71,15 @@ searchBtn.addEventListener('click', async () => {
 
   try {
     const res = await fetch(`/combined-videos?query=${encodeURIComponent(query)}&start=${start}&end=${end}&source=${source}`);
-    const data = await res.json();
+    const data = await res.text();
+    console.log("SERVER RESPONSE:", text);
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch {
+      alert("Backend error: " + text);
+      return;
+    }
     if (!data || !data.videos || !Array.isArray(data.videos)) { alert("Invalid server response"); return; }
 
     const videos = data.videos;
@@ -133,3 +141,4 @@ function exportCSV(videos){
 </script>
 </body>
 </html>
+
