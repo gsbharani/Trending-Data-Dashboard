@@ -6,67 +6,65 @@
   <title>Video Dashboard</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
-  <style>
-    .platform-yt { @apply bg-red-600; }
-    .platform-manual { @apply bg-purple-600; }
-  </style>
 </head>
-<body class="bg-gray-50 p-6">
-  <h1 class="text-3xl font-bold mb-6">Multi-Source Video Dashboard</h1>
+<body class="bg-gray-100 p-6 min-h-screen">
+  <div class="max-w-7xl mx-auto">
+    <h1 class="text-4xl font-bold text-gray-800 mb-8">Multi-Source Video Dashboard</h1>
 
-  <div class="mb-6 flex flex-wrap gap-3 items-end">
-    <input id="query" placeholder="Keyword or #hashtag" class="border p-3 rounded-lg w-64">
-    <input id="start" type="date" class="border p-3 rounded-lg">
-    <input id="end" type="date" class="border p-3 rounded-lg">
-    <select id="sourceFilter" class="border p-3 rounded-lg">
-      <option value="all">All Sources</option>
-      <option value="youtube">YouTube Only</option>
-      <option value="manual">Manual Only</option>
-    </select>
-    <button id="searchBtn" class="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700">Search</button>
-    <button id="exportBtn" class="bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700">Export CSV</button>
+    <div class="bg-white p-6 rounded-xl shadow-md mb-8 flex flex-wrap gap-4 items-end">
+      <input id="query" placeholder="Keyword or #hashtag" class="border border-gray-300 px-4 py-3 rounded-lg w-72">
+      <input id="start" type="date" class="border border-gray-300 px-4 py-3 rounded-lg">
+      <input id="end" type="date" class="border border-gray-300 px-4 py-3 rounded-lg">
+      <select id="sourceFilter" class="border border-gray-300 px-4 py-3 rounded-lg">
+        <option value="all">All Sources</option>
+        <option value="youtube">YouTube Only</option>
+        <option value="manual">Manual Only</option>
+      </select>
+      <button id="searchBtn" class="bg-blue-600 text-white px-8 py-3 rounded-lg hover:bg-blue-700 font-medium">Search</button>
+      <button id="exportBtn" class="bg-green-600 text-white px-8 py-3 rounded-lg hover:bg-green-700 font-medium">Export CSV</button>
 
-    <div class="ml-auto">
-      <input type="file" id="excelUpload" accept=".xlsx,.xls" class="hidden">
-      <button onclick="document.getElementById('excelUpload').click()" 
-              class="bg-indigo-600 text-white px-6 py-3 rounded-lg hover:bg-indigo-700">
-        Upload Excel
-      </button>
-    </div>
-  </div>
-
-  <div id="loading" class="hidden text-blue-600 text-lg font-medium mb-4">Loading videos...</div>
-
-  <div id="results" class="hidden">
-    <p class="text-xl mb-4">Total Videos: <span id="count" class="font-bold">0</span></p>
-
-    <div class="overflow-x-auto shadow-lg rounded-lg">
-      <table class="min-w-full border border-gray-300 bg-white" id="videoTable">
-        <thead class="bg-gray-200">
-          <tr>
-            <th class="border px-4 py-2 text-left">Title</th>
-            <th class="border px-4 py-2 text-left">Channel</th>
-            <th class="border px-4 py-2">Published</th>
-            <th class="border px-4 py-2">Platform</th>
-            <th class="border px-4 py-2 text-right">Views</th>
-            <th class="border px-4 py-2 text-right">Likes</th>
-            <th class="border px-4 py-2 text-right">Comments</th>
-            <th class="border px-4 py-2">Link</th>
-          </tr>
-        </thead>
-        <tbody id="tableBody"></tbody>
-      </table>
+      <div class="ml-auto">
+        <input type="file" id="excelUpload" accept=".xlsx,.xls" class="hidden">
+        <button onclick="document.getElementById('excelUpload').click()"
+                class="bg-indigo-600 text-white px-8 py-3 rounded-lg hover:bg-indigo-700 font-medium">
+          Upload Excel
+        </button>
+      </div>
     </div>
 
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mt-8">
-      <canvas id="viewsChart"></canvas>
-      <canvas id="likesChart"></canvas>
-      <canvas id="commentsChart"></canvas>
+    <div id="loading" class="hidden text-center text-blue-600 text-xl font-medium my-8">Loading videos...</div>
+
+    <div id="results" class="hidden">
+      <p class="text-2xl mb-6">Total Videos: <span id="count" class="font-bold text-blue-600">0</span></p>
+
+      <div class="overflow-x-auto bg-white rounded-xl shadow-lg">
+        <table class="w-full">
+          <thead class="bg-gray-200">
+            <tr>
+              <th class="px-6 py-4 text-left">Title</th>
+              <th class="px-6 py-4 text-left">Channel</th>
+              <th class="px-6 py-4 text-center">Date</th>
+              <th class="px-6 py-4 text-center">Platform</th>
+              <th class="px-6 py-4 text-right">Views</th>
+              <th class="px-6 py-4 text-right">Likes</th>
+              <th class="px-6 py-4 text-right">Comments</th>
+              <th class="px-6 py-4 text-center">Link</th>
+            </tr>
+          </thead>
+          <tbody id="tableBody" class="divide-y divide-gray-200"></tbody>
+        </table>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-8 mt-10">
+        <canvas id="viewsChart" class="bg-white p-4 rounded-xl shadow"></canvas>
+        <canvas id="likesChart" class="bg-white p-4 rounded-xl shadow"></canvas>
+        <canvas id="commentsChart" class="bg-white p-4 rounded-xl shadow"></canvas>
+      </div>
     </div>
   </div>
 
   <script>
-    // Set default date range: last 7 days
+    // Default: last 7 days
     const today = new Date().toISOString().split('T')[0];
     const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
     document.getElementById('start').value = weekAgo;
@@ -74,7 +72,7 @@
 
     let chartViews, chartLikes, chartComments;
 
-    // Upload Excel
+    // Excel Upload
     document.getElementById('excelUpload').addEventListener('change', async (e) => {
       const file = e.target.files[0];
       if (!file) return;
@@ -83,87 +81,70 @@
       formData.append("file", file);
 
       try {
-        const res = await fetch('/upload-excel', {
-          method: 'POST',
-          body: formData
-        });
+        const res = await fetch('/upload-excel', { method: 'POST', body: formData });
         const data = await res.json();
-        if (res.ok) {
-          alert(`Success! Uploaded ${data.count} records.`);
-        } else {
-          alert("Upload failed: " + (data.detail || "Unknown error"));
-        }
+        alert(res.ok ? `Uploaded ${data.count} records successfully!` : `Error: ${data.detail || 'Unknown'}`);
       } catch (err) {
-        alert("Upload error: " + err);
+        alert("Upload failed: " + err);
       }
     });
 
     // Search
-    document.getElementById('searchBtn').addEventListener('click', async () => {
+    document.getElementById('searchBtn').onclick = async () => {
       const query = document.getElementById('query').value.trim();
       const start = document.getElementById('start').value;
       const end = document.getElementById('end').value;
       const source = document.getElementById('sourceFilter').value;
 
-      if (!query || !start || !end) {
-        alert("Please fill in keyword and date range");
-        return;
-      }
+      if (!query || !start || !end) return alert("Please enter keyword and select dates");
 
       document.getElementById('loading').classList.remove('hidden');
       document.getElementById('results').classList.add('hidden');
       document.getElementById('tableBody').innerHTML = '';
 
       try {
-        const res = await fetch(`/combined-videos?query=${encodeURIComponent(query)}&start=${start}&end=${end}&source=${source}&max_results=100`);
+        const res = await fetch(`/combined-videos?query=${encodeURIComponent(query)}&start=${start}&end=${end}&source=${source}&max_results=50`);
         const data = await res.json();
 
-        if (data.error) {
-          alert("Error: " + data.error);
-          return;
-        }
+        if (data.error) return alert("Error: " + data.error);
+        if (!data.videos.length) return alert("No videos found");
 
-        const videos = data.videos || [];
-        if (videos.length === 0) {
-          alert("No videos found for the given criteria");
-          return;
-        }
-
-        document.getElementById('count').textContent = videos.length;
-        renderTable(videos);
-        renderCharts(videos);
+        document.getElementById('count').textContent = data.total;
+        renderTable(data.videos);
+        renderCharts(data.videos);
         document.getElementById('results').classList.remove('hidden');
 
-        document.getElementById('exportBtn').onclick = () => exportCSV(videos);
+        document.getElementById('exportBtn').onclick = () => exportCSV(data.videos);
       } catch (err) {
         alert("Request failed: " + err);
       } finally {
         document.getElementById('loading').classList.add('hidden');
       }
-    });
+    };
 
     function formatNum(n) {
-      if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
-      if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
+      n = Number(n);
+      if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M';
+      if (n >= 1e3) return (n / 1e3).toFixed(1) + 'K';
       return n.toString();
     }
 
     function renderTable(videos) {
       document.getElementById('tableBody').innerHTML = videos.map(v => `
-        <tr class="hover:bg-gray-50">
-          <td class="border px-4 py-2 max-w-md truncate" title="${v.title}">${v.title || 'Untitled'}</td>
-          <td class="border px-4 py-2">${v.channel || 'Unknown'}</td>
-          <td class="border px-4 py-2 text-center">${v.published}</td>
-          <td class="border px-4 py-2 text-center">
-            <span class="inline-block px-3 py-1 text-white text-sm rounded-full ${v.platform === 'YouTube' ? 'bg-red-600' : 'bg-purple-600'}">
+        <tr class="hover:bg-gray-50 transition">
+          <td class="px-6 py-4 max-w-xs truncate" title="${v.title}">${v.title || 'Untitled'}</td>
+          <td class="px-6 py-4">${v.channel || 'Unknown'}</td>
+          <td class="px-6 py-4 text-center">${v.published}</td>
+          <td class="px-6 py-4 text-center">
+            <span class="px-4 py-1 rounded-full text-white text-sm font-medium ${v.platform === 'YouTube' ? 'bg-red-600' : 'bg-purple-600'}">
               ${v.platform}
             </span>
           </td>
-          <td class="border px-4 py-2 text-right">${formatNum(v.views)}</td>
-          <td class="border px-4 py-2 text-right">${formatNum(v.likes)}</td>
-          <td class="border px-4 py-2 text-right">${formatNum(v.comments)}</td>
-          <td class="border px-4 py-2 text-center">
-            <a href="${v.url}" target="_blank" class="text-blue-600 hover:underline">Open</a>
+          <td class="px-6 py-4 text-right font-medium">${formatNum(v.views)}</td>
+          <td class="px-6 py-4 text-right">${formatNum(v.likes)}</td>
+          <td class="px-6 py-4 text-right">${formatNum(v.comments)}</td>
+          <td class="px-6 py-4 text-center">
+            <a href="${v.url}" target="_blank" class="text-blue-600 hover:underline font-medium">Open →</a>
           </td>
         </tr>
       `).join('');
@@ -176,49 +157,42 @@
       const likes = sorted.map(v => v.likes);
       const comments = sorted.map(v => v.comments);
 
-      const config = {
-        type: 'line',
-        options: {
-          responsive: true,
-          plugins: { legend: { position: 'top' } },
-          scales: { y: { beginAtZero: true } }
-        }
-      };
+      const config = { responsive: true, plugins: { legend: { position: 'top' } } };
 
-      if (chartViews) chartViews.destroy();
-      if (chartLikes) chartLikes.destroy();
-      if (chartComments) chartComments.destroy();
+      [chartViews, chartLikes, chartComments].forEach(c => c?.destroy());
 
       chartViews = new Chart(document.getElementById('viewsChart'), {
-        ...config,
-        data: { labels, datasets: [{ label: 'Views', data: views, borderColor: 'rgb(59, 130, 246)', tension: 0.1 }] }
+        type: 'line',
+        data: { labels, datasets: [{ label: 'Views', data: views, borderColor: '#3b82f6', tension: 0.3 }] },
+        options: { ...config, scales: { y: { beginAtZero: true } } }
       });
 
       chartLikes = new Chart(document.getElementById('likesChart'), {
-        ...config,
-        data: { labels, datasets: [{ label: 'Likes', data: likes, borderColor: 'rgb(236, 72, 153)', tension: 0.1 }] }
+        type: 'line',
+        data: { labels, datasets: [{ label: 'Likes', data: likes, borderColor: '#ec4899', tension: 0.3 }] },
+        options: { ...config, scales: { y: { beginAtZero: true } } }
       });
 
       chartComments = new Chart(document.getElementById('commentsChart'), {
         type: 'bar',
-        ...config,
-        data: { labels, datasets: [{ label: 'Comments', data: comments, backgroundColor: 'rgb(34, 197, 94)' }] }
+        data: { labels, datasets: [{ label: 'Comments', data: comments, backgroundColor: '#22c55e' }] },
+        options: { ...config, scales: { y: { beginAtZero: true } } }
       });
     }
 
     function exportCSV(videos) {
-      if (!videos.length) return alert("No data to export");
+      if (!videos.length) return alert("No data");
 
       let csv = "Title,Channel,Published,Platform,Views,Likes,Comments,URL\n";
       videos.forEach(v => {
         csv += `"${(v.title || '').replace(/"/g, '""')}","${v.channel || ''}","${v.published}","${v.platform}",${v.views},${v.likes},${v.comments},"${v.url}"\n`;
       });
 
-      const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+      const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `video_dashboard_${new Date().toISOString().slice(0, 10)}.csv`;
+      a.download = `videos_${today}.csv`;
       a.click();
       URL.revokeObjectURL(url);
     }
