@@ -24,7 +24,7 @@ client = MongoClient(MONGO_URI)
 db = client["video_dashboard"]
 manual_collection = db["manual_data"]
 
-app = FastAPI(title="Multi-Source Trending Data Dashboard")
+app = FastAPI(title="Multi-Source Trending Video Dashboard")
 
 app.add_middleware(
     CORSMiddleware,
@@ -38,11 +38,11 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
 # ---------------------------
-# Helper functions
+# Helpers
 # ---------------------------
 def yt(url: str) -> Dict[str, Any]:
     try:
-        r = requests.get(url, timeout=20)
+        r = requests.get(url, timeout=30)
         r.raise_for_status()
         return r.json()
     except Exception as e:
@@ -55,16 +55,16 @@ def fix(s: str) -> str:
     try:
         return s.encode("latin1").decode("utf-8")
     except:
-        return s.replace("\x00", "")  # remove null bytes if any
+        return s.encode("utf-8", errors="ignore").decode("utf-8")
 
 
 # ---------------------------
-# Upload Excel (secure file upload)
+# Secure Excel Upload
 # ---------------------------
 @app.post("/upload-excel")
 async def upload_excel(file: UploadFile = File(...)):
     if not file.filename.lower().endswith(('.xlsx', '.xls')):
-        raise HTTPException(400, "Only Excel files (.xlsx, .xls) are allowed")
+        raise HTTPException(400, "Only Excel files are allowed")
 
     try:
         contents = await file.read()
@@ -73,27 +73,28 @@ async def upload_excel(file: UploadFile = File(...)):
         df = df.fillna("")
 
         records = df.to_dict(orient="records")
-        manual_collection.delete_many({})  # Clear previous manual data
+        manual_collection.delete_many({})
         if records:
             manual_collection.insert_many(records)
 
         return {"status": "ok", "count": len(records)}
     except Exception as e:
-        raise HTTPException(500, f"Error processing file: {str(e)}")
+        raise HTTPException(500, f"Error processing Excel: {str(e)}")
 
 
 # ---------------------------
-# Fetch YouTube videos
+# YouTube Search + Stats (Robust)
 # ---------------------------
 @app.get("/search-videos")
 def search_videos(query: str, start: str, end: str, max_results: int = 50):
     query = query.lstrip("#").strip()
     if not query:
-        raise HTTPException(400, "Query cannot be empty")
+        raise HTTPException(400, "Query is required")
 
     video_ids = []
     next_page = ""
 
+    # Collect video IDs
     while len(video_ids) < max_results:
         url = (
             f"https://www.googleapis.com/youtube/v3/search"
@@ -104,7 +105,7 @@ def search_videos(query: str, start: str, end: str, max_results: int = 50):
         )
         data = yt(url)
         if data.get("error"):
-            raise HTTPException(502, f"YouTube API error: {data['error']}")
+            raise HTTPException(502, f"YouTube search error: {data['error']}")
 
         items = data.get("items", [])
         if not items:
@@ -119,26 +120,36 @@ def search_videos(query: str, start: str, end: str, max_results: int = 50):
             break
         next_page = data["nextPageToken"]
 
-    # Fetch stats in batches
+    if not video_ids:
+        return {"videos": [], "total": 0}
+
+    # Fetch stats in batches (robust)
     stats = []
+    processed_ids = set()
+
     for i in range(0, len(video_ids), 50):
-        batch = ",".join(video_ids[i:i + 50])
-        info_url = (
-            f"https://www.googleapis.com/youtube/v3/videos"
-            f"?part=snippet,statistics&id={batch}&key={API_KEY}"
-        )
+        batch_ids = video_ids[i:i + 50]
+        batch = ",".join(batch_ids)
+        info_url = f"https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics&id={batch}&key={API_KEY}"
         info = yt(info_url)
+
         if info.get("error"):
+            print(f"[YT ERROR] Batch failed: {info['error']}")
             continue
 
         for v in info.get("items", []):
+            vid = v["id"]
+            if vid in processed_ids:
+                continue
+            processed_ids.add(vid)
+
             sn = v["snippet"]
-            st = v["statistics"]
+            st = v.get("statistics", {})
             stats.append({
-                "video_id": v["id"],
+                "video_id": vid,
                 "title": fix(sn["title"]),
                 "channel": fix(sn["channelTitle"]),
-                "url": f"https://youtu.be/{v['id']}",
+                "url": f"https://youtu.be/{vid}",
                 "published": sn["publishedAt"][:10],
                 "views": int(st.get("viewCount", 0) or 0),
                 "likes": int(st.get("likeCount", 0) or 0),
@@ -151,7 +162,7 @@ def search_videos(query: str, start: str, end: str, max_results: int = 50):
 
 
 # ---------------------------
-# Combined endpoint (fixed source filtering)
+# Combined Results
 # ---------------------------
 @app.get("/combined-videos")
 def combined_videos(query: str, start: str, end: str, max_results: int = 50, source: str = "all"):
@@ -161,12 +172,12 @@ def combined_videos(query: str, start: str, end: str, max_results: int = 50, sou
             result = search_videos(query, start, end, max_results)
             yt_videos = result.get("videos", [])
 
-        # Fetch and filter manual data
-        manual_videos_raw = list(manual_collection.find({}))
+        # Manual data
+        manual_raw = list(manual_collection.find({}))
         query_lower = query.lower().strip()
         filtered_manual = []
 
-        for v in manual_videos_raw:
+        for v in manual_raw:
             pub_date = str(v.get("published", "") or "").strip()
             if not pub_date or not (start <= pub_date <= end):
                 continue
@@ -175,7 +186,6 @@ def combined_videos(query: str, start: str, end: str, max_results: int = 50, sou
             if query_lower and query_lower not in keywords_str:
                 continue
 
-            # Ensure required fields
             v.setdefault("title", "Untitled")
             v.setdefault("channel", v.get("id", "Unknown"))
             v.setdefault("url", "#")
@@ -184,10 +194,9 @@ def combined_videos(query: str, start: str, end: str, max_results: int = 50, sou
             v.setdefault("comments", 0)
             v.setdefault("platform", "Manual")
             v["published"] = pub_date
-
             filtered_manual.append(v)
 
-        # Combine based on source
+        # Combine
         if source == "youtube":
             combined = yt_videos
         elif source == "manual":
@@ -195,19 +204,15 @@ def combined_videos(query: str, start: str, end: str, max_results: int = 50, sou
         else:
             combined = yt_videos + filtered_manual
 
-        # Sort newest first
         combined.sort(key=lambda x: x.get("published", "0000-00-00"), reverse=True)
 
         return {"videos": combined, "total": len(combined)}
     except Exception as e:
-        return JSONResponse(
-            content={"error": str(e), "videos": [], "total": 0},
-            status_code=500
-        )
+        return JSONResponse({"error": str(e), "videos": [], "total": 0}, status_code=500)
 
 
 # ---------------------------
-# Serve frontend
+# Serve Frontend
 # ---------------------------
 @app.get("/", include_in_schema=False)
 def root():
