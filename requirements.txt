@@ -1,6 +1,9 @@
 fastapi
 uvicorn[standard]
-pandas
-requests
-python-dotenv
+gunicorn
 pymongo
+python-dotenv
+pandas
+openpyxl
+requests
+python-multipart    # <-- ADD THIS LINE
