@@ -6,18 +6,18 @@ from sqlalchemy import create_engine, Column, Integer, String
 from sqlalchemy.orm import declarative_base, sessionmaker
 from dotenv import load_dotenv
 from io import BytesIO
+from datetime import datetime
 import pandas as pd
 import requests
 import os
 
-# ---------------- CONFIG ----------------
+# ------------------ CONFIG ------------------
 load_dotenv()
 YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY")
-
 if not YOUTUBE_API_KEY:
-    raise RuntimeError("Set YOUTUBE_API_KEY in .env")
+    raise RuntimeError("Set YOUTUBE_API_KEY in environment variables")
 
-# ---------------- DB (SQLite) ----------------
+# ------------------ DATABASE (SQLite) ------------------
 engine = create_engine(
     "sqlite:///videos.db", connect_args={"check_same_thread": False}
 )
@@ -38,8 +38,8 @@ class ManualVideo(Base):
 
 Base.metadata.create_all(bind=engine)
 
-# ---------------- APP ----------------
-app = FastAPI(title="Video Dashboard")
+# ------------------ APP ------------------
+app = FastAPI(title="Multi-Source Video Dashboard")
 
 app.add_middleware(
     CORSMiddleware,
@@ -50,30 +50,35 @@ app.add_middleware(
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-# ---------------- FRONTEND ----------------
 @app.get("/", include_in_schema=False)
 def home():
     return FileResponse("static/index.html")
 
-# ---------------- EXCEL UPLOAD ----------------
+# ------------------ EXCEL UPLOAD ------------------
 @app.post("/upload-excel")
 async def upload_excel(file: UploadFile = File(...)):
-    if not file.filename.endswith((".xlsx", ".xls")):
-        raise HTTPException(400, "Only Excel allowed")
+    if not file.filename.lower().endswith((".xlsx", ".xls")):
+        raise HTTPException(400, "Only Excel files allowed")
 
     df = pd.read_excel(BytesIO(await file.read())).fillna("")
     session = SessionLocal()
     session.query(ManualVideo).delete()
 
     for _, r in df.iterrows():
+        pub = r.get("published", "")
+        if isinstance(pub, (pd.Timestamp, datetime)):
+            pub = pub.strftime("%Y-%m-%d")
+        else:
+            pub = str(pub)[:10]
+
         session.add(ManualVideo(
-            title=r.get("title", ""),
-            channel=r.get("channel", ""),
-            published=str(r.get("published", "")),
+            title=str(r.get("title", "")),
+            channel=str(r.get("channel", "")),
+            published=pub,
             views=int(r.get("views", 0) or 0),
             likes=int(r.get("likes", 0) or 0),
             comments=int(r.get("comments", 0) or 0),
-            url=r.get("url", ""),
+            url=str(r.get("url", "")),
             keywords=str(r.get("keywords", "")).lower()
         ))
 
@@ -81,27 +86,28 @@ async def upload_excel(file: UploadFile = File(...)):
     session.close()
     return {"status": "ok", "count": len(df)}
 
-# ---------------- YOUTUBE SEARCH ----------------
+# ------------------ YOUTUBE HELPERS ------------------
 def yt(url):
     r = requests.get(url, timeout=30)
     r.raise_for_status()
     return r.json()
 
+# ------------------ COMBINED API ------------------
 @app.get("/combined-videos")
 def combined_videos(query: str, start: str, end: str, source: str = "all"):
     videos = []
-    q = query.lstrip("#").lower()
+    q = query.lstrip("#").lower().strip()
 
-    # ---- YouTube ----
+    # ---------- YouTube ----------
     if source in ("all", "youtube"):
-        url = (
+        search_url = (
             "https://www.googleapis.com/youtube/v3/search"
             f"?part=snippet&type=video&maxResults=25&q={q}"
             f"&publishedAfter={start}T00:00:00Z"
             f"&publishedBefore={end}T23:59:59Z"
             f"&key={YOUTUBE_API_KEY}"
         )
-        data = yt(url)
+        data = yt(search_url)
         ids = [i["id"]["videoId"] for i in data.get("items", [])]
 
         if ids:
@@ -123,14 +129,17 @@ def combined_videos(query: str, start: str, end: str, source: str = "all"):
                     "platform": "YouTube"
                 })
 
-    # ---- Manual (SQLite) ----
+    # ---------- Manual (Excel) ----------
     if source in ("all", "manual"):
         session = SessionLocal()
         rows = session.query(ManualVideo).all()
         session.close()
 
         for r in rows:
-            if start <= r.published <= end and q in r.keywords:
+            date_ok = not r.published or start <= r.published <= end
+            keyword_ok = not q or q in (r.keywords or "")
+
+            if date_ok and keyword_ok:
                 videos.append({
                     "title": r.title,
                     "channel": r.channel,
