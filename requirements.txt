@@ -1,9 +1,8 @@
 fastapi
-uvicorn[standard]
-gunicorn
-pymongo
-python-dotenv
+uvicorn
 pandas
 openpyxl
 requests
-python-multipart    # <-- ADD THIS LINE
+python-multipart
+sqlalchemy
+python-dotenv
